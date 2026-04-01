@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Streaks</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #7d8590;
+    --accent: #388bfd;
+    --empty: #21262d;
+    --radius: 6px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; min-height: 100vh; }
+
+  /* Layout */
+  .layout { display: flex; min-height: 100vh; }
+  .sidebar { width: 200px; background: var(--surface); border-right: 1px solid var(--border); padding: 20px 0; position: fixed; top: 0; left: 0; height: 100vh; display: flex; flex-direction: column; }
+  .sidebar-title { padding: 0 16px 20px; font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
+  .sidebar-title span { color: var(--accent); }
+  .nav-item { padding: 8px 16px; cursor: pointer; border-radius: 0; display: flex; align-items: center; gap: 10px; color: var(--text-muted); transition: all 0.15s; border-left: 3px solid transparent; }
+  .nav-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+  .nav-item.active { color: var(--text); background: rgba(56,139,253,0.1); border-left-color: var(--accent); }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+  .main { margin-left: 200px; padding: 32px; flex: 1; }
+
+  /* Panels */
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+  .panel-title { font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+  .panel-icon { font-size: 24px; }
+  .add-btn { background: var(--accent); color: #fff; border: none; padding: 8px 16px; border-radius: var(--radius); cursor: pointer; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; transition: opacity 0.15s; }
+  .add-btn:hover { opacity: 0.85; }
+
+  /* Graph card */
+  .graph-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 24px; overflow-x: auto; }
+  .graph-label { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .graph-wrap { display: flex; gap: 6px; }
+  .day-labels { display: flex; flex-direction: column; gap: 2px; padding-top: 20px; }
+  .day-label { height: 13px; font-size: 10px; color: var(--text-muted); line-height: 13px; width: 24px; text-align: right; padding-right: 4px; }
+  .weeks-wrap { overflow-x: auto; }
+  .graph-inner { display: flex; flex-direction: column; }
+  .months-row { display: flex; height: 20px; }
+  .month-label { font-size: 11px; color: var(--text-muted); }
+  .weeks-row { display: flex; gap: 2px; }
+  .week-col { display: flex; flex-direction: column; gap: 2px; }
+  .day-cell { width: 13px; height: 13px; border-radius: 2px; cursor: pointer; transition: transform 0.1s; position: relative; }
+  .day-cell:hover { transform: scale(1.3); z-index: 10; }
+
+  /* Legend */
+  .legend { display: flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 11px; color: var(--text-muted); }
+  .legend-cell { width: 13px; height: 13px; border-radius: 2px; }
+
+  /* Tooltip */
+  #tooltip { position: fixed; background: #1c2128; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; font-size: 12px; color: var(--text); pointer-events: none; z-index: 1000; display: none; max-width: 220px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+  #tooltip strong { display: block; margin-bottom: 4px; color: var(--text); }
+  #tooltip .tip-row { color: var(--text-muted); line-height: 1.6; }
+
+  /* Modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: none; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 28px; width: 400px; max-width: 95vw; }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .form-group input, .form-group textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 8px 12px; font-size: 14px; outline: none; transition: border-color 0.15s; }
+  .form-group input:focus, .form-group textarea:focus { border-color: var(--accent); }
+  .form-group textarea { resize: vertical; min-height: 60px; font-family: inherit; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+  .btn-cancel { background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 8px 16px; border-radius: var(--radius); cursor: pointer; font-size: 13px; }
+  .btn-cancel:hover { border-color: var(--text-muted); color: var(--text); }
+  .btn-save { background: var(--accent); color: #fff; border: none; padding: 8px 20px; border-radius: var(--radius); cursor: pointer; font-size: 13px; font-weight: 600; }
+  .btn-save:hover { opacity: 0.85; }
+  .success-msg { color: #3fb950; font-size: 13px; display: none; }
+  .error-msg { color: #f85149; font-size: 13px; display: none; }
+
+  /* Recent entries */
+  .entries-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; }
+  .entries-title { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
+  .entry-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .entry-row:last-child { border-bottom: none; }
+  .entry-date { color: var(--text-muted); min-width: 90px; }
+  .entry-data { color: var(--text); flex: 1; padding: 0 12px; }
+  .entry-comment { color: var(--text-muted); font-style: italic; font-size: 12px; }
+  .delete-btn { background: none; border: none; color: #6e7681; cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1; }
+  .delete-btn:hover { color: #f85149; }
+  .no-entries { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
+
+  /* Range toggle */
+  .range-toggle { display: flex; gap: 4px; margin-bottom: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px; width: fit-content; }
+  .toggle-btn { background: transparent; border: none; color: var(--text-muted); padding: 5px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s; }
+  .toggle-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+</style>
+</head>
+<body>
+
+<div id="tooltip"><strong id="tip-date"></strong><div id="tip-body" class="tip-row"></div></div>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-title">Str<span>ea</span>ks</div>
+    <div class="nav-item active" onclick="switchPanel('alcohol')"><span class="nav-icon">🍺</span> Alcohol</div>
+    <div class="nav-item" onclick="switchPanel('fitness')"><span class="nav-icon">🏋️</span> Fitness</div>
+    <div class="nav-item" onclick="switchPanel('bike')"><span class="nav-icon">🚴</span> Bike Ride</div>
+    <div class="nav-item" onclick="switchPanel('coke')"><span class="nav-icon">🥃</span> Coke</div>
+    <div class="nav-item" onclick="switchPanel('hike')"><span class="nav-icon">🥾</span> Hike</div>
+    <div class="nav-item" onclick="switchPanel('swimming')"><span class="nav-icon">🏊</span> Swimming</div>
+    <div class="nav-item" onclick="switchPanel('sport')"><span class="nav-icon">⚡</span> All Sport</div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ALCOHOL -->
+    <div class="panel active" id="panel-alcohol">
+      <div class="panel-header">
+        <div class="panel-title"><span class="panel-icon">🍺</span> Alcohol</div>
+        <button class="add-btn" onclick="openModal('alcohol')">+ Add Entry</button>
+      </div>
+      <div class="graph-card">
+        <div class="graph-label">Last 12 months</div>
+        <div class="graph-wrap">
+          <div class="day-labels">
+            <div class="day-label"></div><div class="day-label">Mon</div><div class="day-label"></div>
+            <div class="day-label">Wed</div><div class="day-label"></div><div class="day-label">Fri</div><div class="day-label"></div>
+          </div>
+          <div class="graph-inner">
+            <div class="months-row" id="months-alcohol"></div>
+            <div class="weeks-row" id="graph-alcohol"></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span>No entry</span>
+          <div class="legend-cell" style="background:#21262d;border:1px solid #30363d"></div>
+          <span>0 units</span>
+          <div class="legend-cell" style="background:#238636"></div>
+          <span>1+ units</span>
+          <div class="legend-cell" style="background:#da3633"></div>
+          <span>Heavy</span>
+          <div class="legend-cell" style="background:#7f1d1d"></div>
+        </div>
+      </div>
+      <div class="entries-card">
+        <div class="entries-title">Recent Entries</div>
+        <div id="entries-alcohol"></div>
+      </div>
+    </div>
+
+    <!-- FITNESS -->
+    <div class="panel" id="panel-fitness">
+      <div class="panel-header">
+        <div class="panel-title"><span class="panel-icon">🏋️</span> Fitness</div>
+        <button class="add-btn" onclick="openModal('fitness')">+ Add Entry</button>
+      </div>
+      <div class="graph-card">
+        <div class="graph-label">Last 12 months</div>
+        <div class="graph-wrap">
+          <div class="day-labels">
+            <div class="day-label"></div><div class="day-label">Mon</div><div class="day-label"></div>
+            <div class="day-label">Wed</div><div class="day-label"></div><div class="day-label">Fri</div><div class="day-label"></div>
+          </div>
+          <div class="graph-inner">
+            <div class="months-row" id="months-fitness"></div>
+            <div class="weeks-row" id="graph-fitness"></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span>None</span>
+          <div class="legend-cell" style="background:#21262d;border:1px solid #30363d"></div>
+          <span>&lt;30m</span><div class="legend-cell" style="background:#0d4429"></div>
+          <span>30m</span><div class="legend-cell" style="background:#006d32"></div>
+          <span>1h</span><div class="legend-cell" style="background:#26a641"></div>
+          <span>1h30+</span><div class="legend-cell" style="background:#39d353"></div>
+        </div>
+      </div>
+      <div class="entries-card">
+        <div class="entries-title">Recent Entries</div>
+        <div id="entries-fitness"></div>
+      </div>
+    </div>
+
+    <!-- BIKE -->
+    <div class="panel" id="panel-bike">
+      <div class="panel-header">
+        <div class="panel-title"><span class="panel-icon">🚴</span> Bike Ride</div>
+        <button class="add-btn" onclick="openModal('bike')">+ Add Entry</button>
+      </div>
+      <div class="graph-card">
+        <div class="graph-label">Last 12 months</div>
+        <div class="graph-wrap">
+          <div class="day-labels">
+            <div class="day-label"></div><div class="day-label">Mon</div><div class="day-label"></div>
+            <div class="day-label">Wed</div><div class="day-label"></div><div class="day-label">Fri</div><div class="day-label"></div>
+          </div>
+          <div class="graph-inner">
+            <div class="months-row" id="months-bike"></div>
+            <div class="weeks-row" id="graph-bike"></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span>None</span>
+          <div class="legend-cell" style="background:#21262d;border:1px solid #30363d"></div>
+          <span>&lt;1h</span><div class="legend-cell" style="background:#033d6b"></div>
+          <span>1-2h</span><div class="legend-cell" style="background:#0969da"></div>
+          <span>2-3h</span><div class="legend-cell" style="background:#54aeff"></div>
+          <span>3h+</span><div class="legend-cell" style="background:#cae8ff"></div>
+        </div>
+      </div>
+      <div class="entries-card">
+        <div class="entries-title">Recent Entries</div>
+        <div id="entries-bike"></div>
+      </div>
+    </div>
+
+    <!-- COKE -->
+    <div class="panel" id="panel-coke">
+      <div class="panel-header">
+        <div class="panel-title"><span class="panel-icon">🥃</span> Coke</div>
+        <button class="add-btn" onclick="openModal('coke')">+ Add Entry</button>
+      </div>
+      <div class="graph-card">
+        <div class="graph-label">Last 12 months</div>
+        <div class="graph-wrap">
+          <div class="day-labels">
+            <div class="day-label"></div><div class="day-label">Mon</div><div class="day-label"></div>
+            <div class="day-label">Wed</div><div class="day-label"></div><div class="day-label">Fri</div><div class="day-label"></div>
+          </div>
+          <div class="graph-inner">
+            <div class="months-row" id="months-coke"></div>
+            <div class="weeks-row" id="graph-coke"></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span>No entry</span>
+          <div class="legend-cell" style="background:#21262d;border:1px solid #30363d"></div>
+          <span>0 units</span>
+          <div class="legend-cell" style="background:#238636"></div>
+          <span>1+ units</span>
+          <div class="legend-cell" style="background:#da3633"></div>
+          <span>Heavy</span>
+          <div class="legend-cell" style="background:#7f1d1d"></div>
+        </div>
+      </div>
+      <div class="entries-card">
+        <div class="entries-title">Recent Entries</div>
+        <div id="entries-coke"></div>
+      </div>
+    </div>
+
+    <!-- HIKE -->
+    <div class="panel" id="panel-hike">
+      <div class="panel-header">
+        <div class="panel-title"><span class="panel-icon">🥾</span> Hike</div>
+        <button class="add-btn" onclick="openModal('hike')">+ Add Entry</button>
+      </div>
+      <div class="graph-card">
+        <div class="graph-label">Last 12 months</div>
+        <div class="graph-wrap">
+          <div class="day-labels">
+            <div class="day-label"></div><div class="day-label">Mon</div><div class="day-label"></div>
+            <div class="day-label">Wed</div><div class="day-label"></div><div class="day-label">Fri</div><div class="day-label"></div>
+          </div>
+          <div class="graph-inner">
+            <div class="months-row" id="months-hike"></div>
+            <div class="weeks-row" id="graph-hike"></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span>None</span>
+          <div class="legend-cell" style="background:#21262d;border:1px solid #30363d"></div>
+          <span>&lt;2h</span><div class="legend-cell" style="background:#431407"></div>
+          <span>2-4h</span><div class="legend-cell" style="background:#9a3412"></div>
+          <span>4-6h</span><div class="legend-cell" style="background:#ea580c"></div>
+          <span>6h+</span><div class="legend-cell" style="background:#fdba74"></div>
+        </div>
+      </div>
+      <div class="entries-card">
+        <div class="entries-title">Recent Entries</div>
+        <div id="entries-hike"></div>
+      </div>
+    </div>
+
+    <!-- SWIMMING -->
+    <div class="panel" id="panel-swimming">
+      <div class="panel-header">
+        <div class="panel-title"><span class="panel-icon">🏊</span> Swimming</div>
+        <button class="add-btn" onclick="openModal('swimming')">+ Add Entry</button>
+      </div>
+      <div class="graph-card">
+        <div class="graph-label">Last 12 months</div>
+        <div class="graph-wrap">
+          <div class="day-labels">
+            <div class="day-label"></div><div class="day-label">Mon</div><div class="day-label"></div>
+            <div class="day-label">Wed</div><div class="day-label"></div><div class="day-label">Fri</div><div class="day-label"></div>
+          </div>
+          <div class="graph-inner">
+            <div class="months-row" id="months-swimming"></div>
+            <div class="weeks-row" id="graph-swimming"></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span>None</span>
+          <div class="legend-cell" style="background:#21262d;border:1px solid #30363d"></div>
+          <span>&lt;30m</span><div class="legend-cell" style="background:#164e63"></div>
+          <span>30m</span><div class="legend-cell" style="background:#0e7490"></div>
+          <span>1h</span><div class="legend-cell" style="background:#06b6d4"></div>
+          <span>1h30+</span><div class="legend-cell" style="background:#a5f3fc"></div>
+        </div>
+      </div>
+      <div class="entries-card">
+        <div class="entries-title">Recent Entries</div>
+        <div id="entries-swimming"></div>
+      </div>
+    </div>
+
+    <!-- ALL SPORT -->
+    <div class="panel" id="panel-sport">
+      <div class="panel-header">
+        <div class="panel-title"><span class="panel-icon">⚡</span> All Sport</div>
+        <span style="font-size:12px;color:var(--text-muted)">Fitness + Bike + Hike + Swimming</span>
+      </div>
+      <div class="graph-card">
+        <div class="graph-label">Combined activity — last 12 months</div>
+        <div class="graph-wrap">
+          <div class="day-labels">
+            <div class="day-label"></div><div class="day-label">Mon</div><div class="day-label"></div>
+            <div class="day-label">Wed</div><div class="day-label"></div><div class="day-label">Fri</div><div class="day-label"></div>
+          </div>
+          <div class="graph-inner">
+            <div class="months-row" id="months-sport"></div>
+            <div class="weeks-row" id="graph-sport"></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span>None</span>
+          <div class="legend-cell" style="background:#21262d;border:1px solid #30363d"></div>
+          <span>&lt;30m</span><div class="legend-cell" style="background:#0d4429"></div>
+          <span>30m</span><div class="legend-cell" style="background:#006d32"></div>
+          <span>1h</span><div class="legend-cell" style="background:#26a641"></div>
+          <span>1h30+</span><div class="legend-cell" style="background:#39d353"></div>
+          <span>3h+</span><div class="legend-cell" style="background:#7ee787"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Add Entry</div>
+    <form id="entry-form" onsubmit="submitForm(event)">
+      <div id="form-fields"></div>
+      <div class="modal-actions">
+        <span class="success-msg" id="form-success">Saved!</span>
+        <span class="error-msg" id="form-error"></span>
+        <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn-save">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+let currentActivity = 'alcohol';
+let graphData = {};
+
+// ── Date helpers ──────────────────────────────────────────────────────────────
+function todayStr() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+function dateStr(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function getGraphStart() {
+  const d = new Date();
+  d.setDate(d.getDate() - 364);
+  // Back up to Monday (1)
+  while (d.getDay() !== 1) d.setDate(d.getDate() - 1);
+  return d;
+}
+
+// ── Color logic ───────────────────────────────────────────────────────────────
+function getColor(activity, data) {
+  const empty = '#21262d';
+  if (!data) return empty;
+
+  if (activity === 'alcohol' || activity === 'coke') {
+    const u = data.units;
+    if (u === 0) return '#238636';
+    if (u <= 2) return '#da3633';
+    if (u <= 5) return '#b91c1c';
+    return '#7f1d1d';
+  }
+
+  if (activity === 'fitness' || activity === 'sport') {
+    const m = data.minutes || 0;
+    if (m <= 0) return empty;
+    if (m < 30) return '#0d4429';
+    if (m < 60) return '#006d32';
+    if (m < 90) return '#26a641';
+    if (activity === 'sport' && m >= 180) return '#7ee787';
+    return '#39d353';
+  }
+
+  if (activity === 'swimming') {
+    const m = data.minutes || 0;
+    if (m <= 0) return empty;
+    if (m < 30) return '#164e63';
+    if (m < 60) return '#0e7490';
+    if (m < 90) return '#06b6d4';
+    return '#a5f3fc';
+  }
+
+  if (activity === 'bike') {
+    const h = data.hours || 0;
+    if (h <= 0) return empty;
+    if (h < 1) return '#033d6b';
+    if (h < 2) return '#0969da';
+    if (h < 3) return '#54aeff';
+    return '#cae8ff';
+  }
+
+  if (activity === 'hike') {
+    const h = data.hours || 0;
+    if (h <= 0) return empty;
+    if (h < 2) return '#431407';
+    if (h < 4) return '#9a3412';
+    if (h < 6) return '#ea580c';
+    return '#fdba74';
+  }
+
+  return empty;
+}
+
+function getTooltip(activity, ds, data) {
+  const d = new Date(ds + 'T00:00:00');
+  const label = `${DAY_NAMES[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  if (!data) return { date: label, body: 'No entry' };
+
+  let body = '';
+  if (activity === 'alcohol' || activity === 'coke') {
+    body = `Units: ${data.units}`;
+  } else if (activity === 'fitness') {
+    body = `Duration: ${fmtMins(data.minutes)}`;
+    if (data.comment) body += `<br>${data.comment}`;
+  } else if (activity === 'swimming') {
+    body = `${data.metres}m in ${fmtMins(data.minutes)}`;
+    if (data.comment) body += `<br>${data.comment}`;
+  } else if (activity === 'bike') {
+    body = `${data.km} km · ${fmtHours(data.hours)}`;
+    if (data.dplus) body += ` · D+ ${data.dplus}m`;
+    if (data.comment) body += `<br>${data.comment}`;
+  } else if (activity === 'hike') {
+    body = `${data.km} km · ${fmtHours(data.hours)}`;
+    if (data.dplus) body += ` · D+ ${data.dplus}m`;
+    if (data.comment) body += `<br>${data.comment}`;
+  } else if (activity === 'sport') {
+    body = `Total active: ${fmtMins(data.minutes)}`;
+  }
+  return { date: label, body: body || 'No data' };
+}
+
+function fmtMins(m) {
+  if (!m) return '0 min';
+  const h = Math.floor(m / 60), min = m % 60;
+  if (h > 0) return min > 0 ? `${h}h ${min}m` : `${h}h`;
+  return `${min} min`;
+}
+function fmtHours(h) {
+  if (!h) return '0h';
+  const hrs = Math.floor(h), mins = Math.round((h - hrs) * 60);
+  if (hrs > 0) return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
+  return `${mins}m`;
+}
+
+// ── Render graph ──────────────────────────────────────────────────────────────
+function renderGraph(activity, data) {
+  const weeksEl = document.getElementById('graph-' + activity);
+  const monthsEl = document.getElementById('months-' + activity);
+  if (!weeksEl) return;
+
+  const today = new Date();
+  const todayS = dateStr(today);
+  const start = getGraphStart();
+
+  const weeks = [];
+  const cur = new Date(start);
+  while (cur <= today) {
+    const week = [];
+    for (let d = 0; d < 7; d++) {
+      week.push(cur <= today ? new Date(cur) : null);
+      cur.setDate(cur.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+
+  // Month labels
+  const monthPositions = [];
+  let lastMonth = -1;
+  weeks.forEach((week, wi) => {
+    const firstDay = week.find(d => d !== null);
+    if (firstDay && firstDay.getMonth() !== lastMonth) {
+      lastMonth = firstDay.getMonth();
+      monthPositions.push({ wi, month: lastMonth });
+    }
+  });
+
+  let monthsHtml = '';
+  monthPositions.forEach((mp, i) => {
+    const nextWi = i + 1 < monthPositions.length ? monthPositions[i + 1].wi : weeks.length;
+    const widthPx = (nextWi - mp.wi) * 15;
+    monthsHtml += `<div class="month-label" style="width:${widthPx}px">${MONTHS[mp.month]}</div>`;
+  });
+  monthsEl.innerHTML = monthsHtml;
+
+  // Cells
+  let html = '';
+  weeks.forEach(week => {
+    html += '<div class="week-col">';
+    week.forEach(day => {
+      if (!day) {
+        html += '<div class="day-cell" style="background:transparent;cursor:default"></div>';
+        return;
+      }
+      const ds = dateStr(day);
+      const dayData = data[ds] || null;
+      const color = getColor(activity, dayData);
+      const isToday = ds === todayS ? 'outline:2px solid #58a6ff;outline-offset:1px;' : '';
+      html += `<div class="day-cell" style="background:${color};${isToday}" data-date="${ds}"></div>`;
+    });
+    html += '</div>';
+  });
+  weeksEl.innerHTML = html;
+
+  // Tooltip events
+  weeksEl.querySelectorAll('.day-cell[data-date]').forEach(cell => {
+    cell.addEventListener('mouseenter', (e) => {
+      const tip = getTooltip(activity, cell.dataset.date, data[cell.dataset.date] || null);
+      showTooltip(e, tip.date, tip.body);
+    });
+    cell.addEventListener('mousemove', moveTooltip);
+    cell.addEventListener('mouseleave', hideTooltip);
+  });
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+const tipEl = document.getElementById('tooltip');
+const tipDate = document.getElementById('tip-date');
+const tipBody = document.getElementById('tip-body');
+
+function showTooltip(e, date, body) {
+  tipDate.textContent = date;
+  tipBody.innerHTML = body;
+  tipEl.style.display = 'block';
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  const x = e.clientX + 14, y = e.clientY - 10;
+  tipEl.style.left = Math.min(x, window.innerWidth - 240) + 'px';
+  tipEl.style.top = Math.max(y, 4) + 'px';
+}
+function hideTooltip() { tipEl.style.display = 'none'; }
+
+// ── Load data ─────────────────────────────────────────────────────────────────
+async function loadGraph(activity) {
+  const res = await fetch('/data/' + activity);
+  const data = await res.json();
+  graphData[activity] = data;
+  renderGraph(activity, data);
+}
+
+async function loadEntries(activity) {
+  if (activity === 'sport') return;
+  const res = await fetch('/entries/' + activity);
+  const entries = await res.json();
+  const el = document.getElementById('entries-' + activity);
+  if (!el) return;
+
+  if (!entries.length) {
+    el.innerHTML = '<div class="no-entries">No entries yet.</div>';
+    return;
+  }
+
+  el.innerHTML = entries.map(e => {
+    const data = formatEntry(activity, e);
+    return `<div class="entry-row">
+      <span class="entry-date">${e.date}</span>
+      <span class="entry-data">${data.main}</span>
+      ${data.comment ? `<span class="entry-comment">${data.comment}</span>` : ''}
+      <button class="delete-btn" onclick="deleteEntry('${activity}', ${e.id})" title="Delete">×</button>
+    </div>`;
+  }).join('');
+}
+
+function formatEntry(activity, e) {
+  if (activity === 'alcohol' || activity === 'coke') return { main: `${e.units} units`, comment: '' };
+  if (activity === 'fitness') return { main: fmtMins(e.minutes), comment: e.comment || '' };
+  if (activity === 'swimming') return { main: `${e.metres}m · ${fmtMins(e.minutes)}`, comment: e.comment || '' };
+  if (activity === 'bike') return { main: `${e.km} km · ${fmtHours(e.hours)}${e.dplus ? ` · D+${e.dplus}m` : ''}`, comment: e.comment || '' };
+  if (activity === 'hike') return { main: `${e.km} km · ${fmtHours(e.hours)}${e.dplus ? ` · D+${e.dplus}m` : ''}`, comment: e.comment || '' };
+  return { main: '', comment: '' };
+}
+
+async function deleteEntry(activity, id) {
+  await fetch(`/delete/${activity}/${id}`, { method: 'DELETE' });
+  loadGraph(activity);
+  loadEntries(activity);
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function switchPanel(activity) {
+  currentActivity = activity;
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('panel-' + activity).classList.add('active');
+  const idx = ['alcohol','fitness','bike','coke','hike','swimming','sport'].indexOf(activity);
+  document.querySelectorAll('.nav-item')[idx].classList.add('active');
+  if (!graphData[activity]) {
+    loadGraph(activity);
+    loadEntries(activity);
+  }
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+const FORMS = {
+  alcohol: {
+    title: '🍺 Add Alcohol Entry',
+    fields: `
+      <div class="range-toggle">
+        <button type="button" class="toggle-btn active" onclick="setRangeMode(this, false)">Single day</button>
+        <button type="button" class="toggle-btn" onclick="setRangeMode(this, true)">Date range</button>
+      </div>
+      <div class="single-date-row form-row">
+        <div class="form-group"><label>Date</label><input type="date" name="date"></div>
+        <div class="form-group"><label>Units</label><input type="number" name="units" min="0" step="0.5" placeholder="0" required></div>
+      </div>
+      <div class="range-date-row" style="display:none">
+        <div class="form-row">
+          <div class="form-group"><label>From</label><input type="date" name="date_from"></div>
+          <div class="form-group"><label>To</label><input type="date" name="date_to"></div>
+        </div>
+        <div class="form-group"><label>Units per day</label><input type="number" name="units" min="0" step="0.5" placeholder="0" required></div>
+      </div>`
+  },
+  fitness: {
+    title: '🏋️ Add Fitness Entry',
+    fields: `
+      <div class="form-row">
+        <div class="form-group"><label>Date</label><input type="date" name="date" required></div>
+        <div class="form-group"><label>Duration (min)</label><input type="number" name="minutes" min="1" placeholder="60" required></div>
+      </div>
+      <div class="form-group"><label>Comment</label><textarea name="comment" placeholder="Optional notes..."></textarea></div>`
+  },
+  bike: {
+    title: '🚴 Add Bike Ride',
+    fields: `
+      <div class="form-group"><label>Date</label><input type="date" name="date" required></div>
+      <div class="form-row">
+        <div class="form-group"><label>Duration (hours)</label><input type="number" name="hours" min="0" step="0.25" placeholder="1.5" required></div>
+        <div class="form-group"><label>Distance (km)</label><input type="number" name="km" min="0" step="0.1" placeholder="30" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>D+ (m)</label><input type="number" name="dplus" min="0" placeholder="500"></div>
+      </div>
+      <div class="form-group"><label>Comment</label><textarea name="comment" placeholder="Optional notes..."></textarea></div>`
+  },
+  coke: {
+    title: '🥃 Add Coke Entry',
+    fields: `
+      <div class="range-toggle">
+        <button type="button" class="toggle-btn active" onclick="setRangeMode(this, false)">Single day</button>
+        <button type="button" class="toggle-btn" onclick="setRangeMode(this, true)">Date range</button>
+      </div>
+      <div class="single-date-row form-row">
+        <div class="form-group"><label>Date</label><input type="date" name="date"></div>
+        <div class="form-group"><label>Units</label><input type="number" name="units" min="0" step="0.5" placeholder="0" required></div>
+      </div>
+      <div class="range-date-row" style="display:none">
+        <div class="form-row">
+          <div class="form-group"><label>From</label><input type="date" name="date_from"></div>
+          <div class="form-group"><label>To</label><input type="date" name="date_to"></div>
+        </div>
+        <div class="form-group"><label>Units per day</label><input type="number" name="units" min="0" step="0.5" placeholder="0" required></div>
+      </div>`
+  },
+  hike: {
+    title: '🥾 Add Hike',
+    fields: `
+      <div class="form-group"><label>Date</label><input type="date" name="date" required></div>
+      <div class="form-row">
+        <div class="form-group"><label>Distance (km)</label><input type="number" name="km" min="0" step="0.1" placeholder="15" required></div>
+        <div class="form-group"><label>Duration (hours)</label><input type="number" name="hours" min="0" step="0.25" placeholder="4" required></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>D+ (m)</label><input type="number" name="dplus" min="0" placeholder="800"></div>
+      </div>
+      <div class="form-group"><label>Comment</label><textarea name="comment" placeholder="Optional notes..."></textarea></div>`
+  },
+  swimming: {
+    title: '🏊 Add Swimming Entry',
+    fields: `
+      <div class="form-group"><label>Date</label><input type="date" name="date" required></div>
+      <div class="form-row">
+        <div class="form-group"><label>Distance (m)</label><input type="number" name="metres" min="1" placeholder="1500" required></div>
+        <div class="form-group"><label>Duration (min)</label><input type="number" name="minutes" min="1" placeholder="45" required></div>
+      </div>
+      <div class="form-group"><label>Comment</label><textarea name="comment" placeholder="Optional notes..."></textarea></div>`
+  }
+};
+
+function setRangeMode(btn, isRange) {
+  btn.closest('.range-toggle').querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  const single = document.querySelector('.single-date-row');
+  const range = document.querySelector('.range-date-row');
+  if (isRange) {
+    single.style.display = 'none';
+    range.style.display = 'block';
+    single.querySelectorAll('input').forEach(i => i.disabled = true);
+    range.querySelectorAll('input').forEach(i => i.disabled = false);
+  } else {
+    single.style.display = '';
+    range.style.display = 'none';
+    range.querySelectorAll('input').forEach(i => i.disabled = true);
+    single.querySelectorAll('input').forEach(i => i.disabled = false);
+  }
+}
+
+function openModal(activity) {
+  const cfg = FORMS[activity];
+  document.getElementById('modal-title').innerHTML = cfg.title;
+  document.getElementById('form-fields').innerHTML = cfg.fields;
+  document.getElementById('modal').dataset.activity = activity;
+  document.getElementById('form-success').style.display = 'none';
+  document.getElementById('form-error').style.display = 'none';
+  // Default date(s) to today
+  document.querySelectorAll('#form-fields input[type="date"]').forEach(i => { i.value = todayStr(); });
+  // Disable range row inputs by default (single mode is active)
+  document.querySelectorAll('#form-fields .range-date-row input').forEach(i => i.disabled = true);
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+
+document.getElementById('modal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('modal')) closeModal();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
+
+async function submitForm(e) {
+  e.preventDefault();
+  const activity = document.getElementById('modal').dataset.activity;
+
+  // Disabled inputs are excluded from FormData automatically
+  const payload = Object.fromEntries(new FormData(e.target));
+
+  const res = await fetch('/add/' + activity, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const result = await res.json();
+
+  if (result.success) {
+    document.getElementById('form-success').style.display = 'inline';
+    document.getElementById('form-error').style.display = 'none';
+    setTimeout(() => {
+      closeModal();
+      loadGraph(activity);
+      loadEntries(activity);
+      // Also refresh sport graph if it was loaded
+      if (graphData['sport'] && ['fitness','bike','hike','swimming'].includes(activity)) {
+        loadGraph('sport');
+      }
+    }, 600);
+  } else {
+    document.getElementById('form-error').textContent = result.error || 'Error saving entry.';
+    document.getElementById('form-error').style.display = 'inline';
+    document.getElementById('form-success').style.display = 'none';
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadGraph('alcohol');
+loadEntries('alcohol');
+</script>
+</body>
+</html>
