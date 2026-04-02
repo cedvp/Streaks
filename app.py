@@ -104,6 +104,8 @@ def init_db():
         ('caroline', 'easa', '["user"]'),
         ('christian', 'croatia', '["user","admin"]'),
         ('admin', 'blabla', '["admin"]'),
+        ('annecarole', 'monza', '["user"]'),
+        ('kim', 'madrid', '["user"]'),
     ]
     for username, password, groups in seed_users:
         c.execute(
