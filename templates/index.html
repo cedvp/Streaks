@@ -14,8 +14,9 @@
 
   .layout { display: flex; min-height: 100vh; }
   .sidebar { width: 210px; background: var(--surface); border-right: 1px solid var(--border); padding: 20px 0 0; position: fixed; top: 0; left: 0; height: 100vh; display: flex; flex-direction: column; overflow-y: auto; }
-  .sidebar-title { padding: 0 16px 20px; font-size: 18px; font-weight: 700; letter-spacing: -0.5px; flex-shrink: 0; }
-  .sidebar-title span { color: var(--accent); }
+  .sidebar-title { padding: 0 16px 20px; font-size: 18px; font-weight: 700; letter-spacing: -0.5px; flex-shrink: 0; line-height: 1.2; }
+  .sidebar-title .logo-white { color: #ffffff; }
+  .sidebar-title .logo-green { color: #39d353; }
   .nav-item { padding: 7px 16px; cursor: pointer; display: flex; align-items: center; gap: 10px; color: var(--text-muted); transition: all 0.15s; border-left: 3px solid transparent; font-size: 13px; }
   .nav-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
   .nav-item.active { color: var(--text); background: rgba(56,139,253,0.1); border-left-color: var(--accent); }
@@ -122,7 +123,7 @@
 
 <div class="layout">
   <aside class="sidebar">
-    <div class="sidebar-title">Str<span>ea</span>ks</div>
+    <div class="sidebar-title"><span class="logo-white">1140</span><span class="logo-green">.tech</span></div>
 
     <div class="nav-item active" data-activity="alcohol" onclick="switchPanel('alcohol')"><span class="nav-icon">🍺</span> Alcohol-Free</div>
     <div class="nav-item" data-activity="coke" onclick="switchPanel('coke')"><span class="nav-icon">🥃</span> Soda Free</div>
@@ -534,28 +535,31 @@ function getColor(activity, data) {
   if (activity === 'fitness' || activity === 'sport') {
     const m = data.minutes || 0;
     if (m <= 0) return empty;
-    if (m < 30) return '#0d4429'; if (m < 60) return '#006d32';
-    if (m < 90) return '#26a641';
-    if (activity === 'sport' && m >= 180) return '#7ee787';
+    if (m < 30) return empty;
+    if (m < 45) return '#0d4429';
+    if (m < 60) return '#26a641';
     return '#39d353';
   }
   if (activity === 'swimming') {
-    const m = data.minutes || 0;
-    if (m <= 0) return empty;
-    if (m < 30) return '#164e63'; if (m < 60) return '#0e7490';
-    if (m < 90) return '#06b6d4'; return '#a5f3fc';
+    const metres = data.metres || 0;
+    if (metres <= 0) return empty;
+    if (metres <= 500) return '#164e63';
+    if (metres <= 1000) return '#0e7490';
+    return '#38bdf8';
   }
   if (activity === 'bike') {
-    const h = data.hours || 0;
-    if (h <= 0) return empty;
-    if (h < 1) return '#033d6b'; if (h < 2) return '#0969da';
-    if (h < 3) return '#54aeff'; return '#cae8ff';
+    const h = data.hours || 0, dp = data.dplus || 0, km = data.km || 0;
+    if (h <= 0 && dp <= 0 && km <= 0) return empty;
+    if (dp > 500 || h > 3 || km > 50) return '#fde047';
+    if (dp > 250 || h > 1 || km > 20) return '#d97706';
+    return '#92400e';
   }
   if (activity === 'hike') {
-    const h = data.hours || 0;
-    if (h <= 0) return empty;
-    if (h < 2) return '#431407'; if (h < 4) return '#9a3412';
-    if (h < 6) return '#ea580c'; return '#fdba74';
+    const h = data.hours || 0, dp = data.dplus || 0, km = data.km || 0;
+    if (h <= 0 && dp <= 0 && km <= 0) return empty;
+    if (dp > 700 || h > 5 || km > 20) return '#39d353';
+    if (dp > 300 || h > 3 || km > 10) return '#26a641';
+    return '#0d4429';
   }
   if (activity === 'food') {
     const a = data.alcohol, c = data.coke;
