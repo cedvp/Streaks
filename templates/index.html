@@ -555,9 +555,9 @@ function getColor(activity, data) {
   if (activity === 'bike') {
     const h = data.hours || 0, dp = data.dplus || 0, km = data.km || 0;
     if (h <= 0 && dp <= 0 && km <= 0) return empty;
-    if (dp > 500 || h > 3 || km > 50) return '#fde047';
-    if (dp > 250 || h > 1 || km > 20) return '#eab308';
-    return '#ca8a04';
+    if (dp > 500 || h > 3 || km > 50) return '#ffe234';
+    if (dp > 250 || h > 1 || km > 20) return '#d4a017';
+    return '#8a6800';
   }
   if (activity === 'hike') {
     const h = data.hours || 0, dp = data.dplus || 0, km = data.km || 0;
