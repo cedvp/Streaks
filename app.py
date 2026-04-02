@@ -1,18 +1,18 @@
 
+import os
 from flask import Flask, render_template, request, jsonify, session, redirect
 import sqlite3
 import json
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
 
 app = Flask(__name__)
-app.secret_key = 'streaks-secret-key-change-in-prod'
-DB_PATH = 'streaks.db'
+app.secret_key = os.environ.get('SECRET_KEY', 'streaks-dev-secret-key')
+DB_PATH = os.environ.get('DATABASE_PATH', 'streaks.db')
 
-USERS = {
-    'cedric': 'calypso',
-    'caroline': 'easa',
-    'admin': 'blabla',
-}
+# Ensure the DB directory exists (e.g. /data on Railway volumes)
+_db_dir = os.path.dirname(DB_PATH)
+if _db_dir:
+    os.makedirs(_db_dir, exist_ok=True)
 
 
 def get_db():
@@ -86,6 +86,30 @@ def init_db():
         data TEXT NOT NULL DEFAULT '{}',
         comment TEXT DEFAULT ''
     )''')
+    # Users table
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        username TEXT PRIMARY KEY,
+        password TEXT NOT NULL,
+        groups TEXT NOT NULL DEFAULT '["user"]'
+    )''')
+    # Login log table
+    c.execute('''CREATE TABLE IF NOT EXISTS login_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        timestamp TEXT NOT NULL
+    )''')
+    # Seed users
+    seed_users = [
+        ('cedric', 'calypso', '["user","admin"]'),
+        ('caroline', 'easa', '["user"]'),
+        ('christian', 'croatia', '["user","admin"]'),
+        ('admin', 'blabla', '["admin"]'),
+    ]
+    for username, password, groups in seed_users:
+        c.execute(
+            'INSERT OR IGNORE INTO users (username, password, groups) VALUES (?, ?, ?)',
+            (username, password, groups)
+        )
     # Migrate existing tables that may lack user_id
     for table in ['alcohol', 'fitness', 'bike_ride', 'coke', 'hike', 'swimming']:
         cols = [row[1] for row in c.execute(f'PRAGMA table_info({table})').fetchall()]
@@ -102,11 +126,26 @@ def current_user():
     return session.get('user')
 
 
+def is_admin():
+    user = current_user()
+    if not user:
+        return False
+    conn = get_db()
+    try:
+        row = conn.execute('SELECT groups FROM users WHERE username=?', (user,)).fetchone()
+        if not row:
+            return False
+        groups = json.loads(row['groups'])
+        return 'admin' in groups
+    finally:
+        conn.close()
+
+
 @app.route('/')
 def index():
     if not current_user():
         return redirect('/login')
-    return render_template('index.html', current_user=current_user())
+    return render_template('index.html', current_user=current_user(), is_admin=is_admin())
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -115,10 +154,22 @@ def login():
         data = request.json
         username = (data.get('username') or '').lower().strip()
         password = data.get('password') or ''
-        if username in USERS and USERS[username] == password:
-            session['user'] = username
-            return jsonify({'success': True})
-        return jsonify({'error': 'Invalid username or password'}), 401
+        conn = get_db()
+        try:
+            row = conn.execute(
+                'SELECT password FROM users WHERE username=?', (username,)
+            ).fetchone()
+            if row and row['password'] == password:
+                session['user'] = username
+                conn.execute(
+                    'INSERT INTO login_log (username, timestamp) VALUES (?, ?)',
+                    (username, datetime.now(timezone.utc).isoformat())
+                )
+                conn.commit()
+                return jsonify({'success': True})
+            return jsonify({'error': 'Invalid username or password'}), 401
+        finally:
+            conn.close()
     return render_template('login.html')
 
 
@@ -126,6 +177,243 @@ def login():
 def logout():
     session.pop('user', None)
     return redirect('/login')
+
+
+# ── Admin routes ───────────────────────────────────────────────────────────────
+
+@app.route('/admin')
+def admin():
+    if not current_user():
+        return redirect('/login')
+    if not is_admin():
+        return redirect('/')
+    return render_template('admin.html', current_user=current_user())
+
+
+@app.route('/admin/users', methods=['GET'])
+def admin_list_users():
+    if not is_admin():
+        return jsonify({'error': 'Forbidden'}), 403
+    conn = get_db()
+    try:
+        users = conn.execute('SELECT username, groups FROM users').fetchall()
+        activities = ['alcohol', 'fitness', 'bike_ride', 'coke', 'hike', 'swimming']
+        result = []
+        for u in users:
+            username = u['username']
+            groups = json.loads(u['groups'])
+            per_activity = {}
+            total_entries = 0
+            for table in activities:
+                count = conn.execute(
+                    f'SELECT COUNT(*) as c FROM {table} WHERE user_id=?', (username,)
+                ).fetchone()['c']
+                per_activity[table] = count
+                total_entries += count
+            # custom_entries
+            ce_count = conn.execute(
+                'SELECT COUNT(*) as c FROM custom_entries WHERE user_id=?', (username,)
+            ).fetchone()['c']
+            per_activity['custom_entries'] = ce_count
+            total_entries += ce_count
+
+            login_count = conn.execute(
+                'SELECT COUNT(*) as c FROM login_log WHERE username=?', (username,)
+            ).fetchone()['c']
+            last_login_row = conn.execute(
+                'SELECT timestamp FROM login_log WHERE username=? ORDER BY timestamp DESC LIMIT 1',
+                (username,)
+            ).fetchone()
+            last_login = None
+            if last_login_row:
+                last_login = last_login_row['timestamp'][:10]
+
+            result.append({
+                'username': username,
+                'groups': groups,
+                'total_entries': total_entries,
+                'per_activity': per_activity,
+                'login_count': login_count,
+                'last_login': last_login,
+            })
+        return jsonify(result)
+    finally:
+        conn.close()
+
+
+@app.route('/admin/users', methods=['POST'])
+def admin_create_user():
+    if not is_admin():
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.json
+    username = (data.get('username') or '').lower().strip()
+    password = data.get('password') or ''
+    groups = data.get('groups', ['user'])
+    if not username or not password:
+        return jsonify({'error': 'Username and password required'}), 400
+    conn = get_db()
+    try:
+        existing = conn.execute('SELECT username FROM users WHERE username=?', (username,)).fetchone()
+        if existing:
+            return jsonify({'error': 'User already exists'}), 409
+        conn.execute(
+            'INSERT INTO users (username, password, groups) VALUES (?, ?, ?)',
+            (username, password, json.dumps(groups))
+        )
+        conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/admin/users/<username>', methods=['DELETE'])
+def admin_delete_user(username):
+    if not is_admin():
+        return jsonify({'error': 'Forbidden'}), 403
+    if username == current_user():
+        return jsonify({'error': 'Cannot delete yourself'}), 400
+    conn = get_db()
+    try:
+        # Delete all user data
+        for table in ['alcohol', 'fitness', 'bike_ride', 'coke', 'hike', 'swimming']:
+            conn.execute(f'DELETE FROM {table} WHERE user_id=?', (username,))
+        conn.execute('DELETE FROM custom_entries WHERE user_id=?', (username,))
+        conn.execute('DELETE FROM custom_activities WHERE user_id=?', (username,))
+        conn.execute('DELETE FROM login_log WHERE username=?', (username,))
+        conn.execute('DELETE FROM users WHERE username=?', (username,))
+        conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/admin/users/<username>/reset_password', methods=['POST'])
+def admin_reset_password(username):
+    if not is_admin():
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.json
+    password = data.get('password') or ''
+    if not password:
+        return jsonify({'error': 'Password required'}), 400
+    conn = get_db()
+    try:
+        conn.execute('UPDATE users SET password=? WHERE username=?', (password, username))
+        conn.commit()
+        return jsonify({'success': True})
+    finally:
+        conn.close()
+
+
+@app.route('/admin/users/<username>/entries', methods=['DELETE'])
+def admin_delete_user_entries(username):
+    if not is_admin():
+        return jsonify({'error': 'Forbidden'}), 403
+    conn = get_db()
+    try:
+        for table in ['alcohol', 'fitness', 'bike_ride', 'coke', 'hike', 'swimming']:
+            conn.execute(f'DELETE FROM {table} WHERE user_id=?', (username,))
+        conn.execute('DELETE FROM custom_entries WHERE user_id=?', (username,))
+        conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/admin/users/<username>/groups', methods=['POST'])
+def admin_update_groups(username):
+    if not is_admin():
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.json
+    groups = data.get('groups', [])
+    conn = get_db()
+    try:
+        conn.execute('UPDATE users SET groups=? WHERE username=?', (json.dumps(groups), username))
+        conn.commit()
+        return jsonify({'success': True})
+    finally:
+        conn.close()
+
+
+@app.route('/admin/login_stats')
+def admin_login_stats():
+    if not is_admin():
+        return jsonify({'error': 'Forbidden'}), 403
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            'SELECT username, timestamp FROM login_log ORDER BY timestamp'
+        ).fetchall()
+
+        today = date.today()
+
+        # Daily — last 30 days
+        daily_map = {}
+        for i in range(29, -1, -1):
+            d = (today - timedelta(days=i)).isoformat()
+            daily_map[d] = {'period': d, 'total': 0, 'per_user': {}}
+        for row in rows:
+            ts = row['timestamp'][:10]
+            if ts in daily_map:
+                daily_map[ts]['total'] += 1
+                u = row['username']
+                daily_map[ts]['per_user'][u] = daily_map[ts]['per_user'].get(u, 0) + 1
+        daily = list(daily_map.values())
+
+        # Weekly — last 12 weeks
+        weekly_map = {}
+        for i in range(11, -1, -1):
+            week_start = today - timedelta(weeks=i, days=today.weekday())
+            iso_year, iso_week, _ = week_start.isocalendar()
+            key = f'{iso_year}-W{iso_week:02d}'
+            weekly_map[key] = {'period': key, 'total': 0, 'per_user': {}, '_start': week_start}
+        for row in rows:
+            ts_date = date.fromisoformat(row['timestamp'][:10])
+            iso_year, iso_week, _ = ts_date.isocalendar()
+            key = f'{iso_year}-W{iso_week:02d}'
+            if key in weekly_map:
+                weekly_map[key]['total'] += 1
+                u = row['username']
+                weekly_map[key]['per_user'][u] = weekly_map[key]['per_user'].get(u, 0) + 1
+        weekly = []
+        for v in weekly_map.values():
+            v.pop('_start', None)
+            weekly.append(v)
+
+        # Monthly — last 12 months
+        monthly_map = {}
+        for i in range(11, -1, -1):
+            # Go back i months
+            month_date = today.replace(day=1) - timedelta(days=i * 28)
+            month_date = month_date.replace(day=1)
+            key = month_date.strftime('%Y-%m')
+            monthly_map[key] = {'period': key, 'total': 0, 'per_user': {}}
+        # Rebuild in proper order
+        month_keys = sorted(monthly_map.keys())
+        monthly_map = {k: monthly_map[k] for k in month_keys}
+        # Keep only last 12
+        if len(monthly_map) > 12:
+            monthly_map = dict(list(monthly_map.items())[-12:])
+
+        for row in rows:
+            key = row['timestamp'][:7]
+            if key in monthly_map:
+                monthly_map[key]['total'] += 1
+                u = row['username']
+                monthly_map[key]['per_user'][u] = monthly_map[key]['per_user'].get(u, 0) + 1
+        monthly = list(monthly_map.values())
+
+        return jsonify({'daily': daily, 'weekly': weekly, 'monthly': monthly})
+    finally:
+        conn.close()
 
 
 # ── Custom activities ──────────────────────────────────────────────────────────
@@ -678,4 +966,6 @@ def import_data():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_ENV', 'development') != 'production'
+    app.run(debug=debug, port=port, host='0.0.0.0')
