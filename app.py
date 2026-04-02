@@ -148,6 +148,11 @@ def index():
     return render_template('index.html', current_user=current_user(), is_admin=is_admin())
 
 
+@app.route('/health')
+def health():
+    return 'ok', 200
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
