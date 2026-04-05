@@ -1,6 +1,7 @@
 
 import os
 from flask import Flask, render_template, request, jsonify, session, redirect
+from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import json
 from datetime import date, timedelta, datetime, timezone
@@ -98,21 +99,30 @@ def init_db():
         username TEXT NOT NULL,
         timestamp TEXT NOT NULL
     )''')
-    # Seed users
+    # Seed users (passwords are stored as hashes — never plaintext)
     seed_users = [
-        ('cedric', 'calypso', '["user","admin"]'),
-        ('caroline', 'easa', '["user"]'),
-        ('christian', 'croatia', '["user","admin"]'),
-        ('admin', 'blabla', '["admin"]'),
-        ('annecarole', 'monza', '["user"]'),
-        ('kim', 'madrid', '["user"]'),
-        ('lucia', 'boone', '["user"]'),
+        ('cedric', generate_password_hash('calypso'), '["user","admin"]'),
+        ('caroline', generate_password_hash('easa'), '["user"]'),
+        ('christian', generate_password_hash('croatia'), '["user","admin"]'),
+        ('admin', generate_password_hash('blabla'), '["admin"]'),
+        ('annecarole', generate_password_hash('monza'), '["user"]'),
+        ('kim', generate_password_hash('madrid'), '["user"]'),
+        ('lucia', generate_password_hash('boone'), '["user"]'),
     ]
-    for username, password, groups in seed_users:
+    for username, password_hash, groups in seed_users:
         c.execute(
             'INSERT OR IGNORE INTO users (username, password, groups) VALUES (?, ?, ?)',
-            (username, password, groups)
+            (username, password_hash, groups)
         )
+    # Migrate any existing plaintext passwords (don't start with a werkzeug hash prefix)
+    rows = c.execute('SELECT username, password FROM users').fetchall()
+    for row in rows:
+        pwd = row[1]
+        if not (pwd.startswith('pbkdf2:') or pwd.startswith('scrypt:')):
+            c.execute(
+                'UPDATE users SET password=? WHERE username=?',
+                (generate_password_hash(pwd), row[0])
+            )
     # Migrate existing tables that may lack user_id
     for table in ['alcohol', 'fitness', 'bike_ride', 'coke', 'hike', 'swimming']:
         cols = [row[1] for row in c.execute(f'PRAGMA table_info({table})').fetchall()]
@@ -167,7 +177,7 @@ def login():
             row = conn.execute(
                 'SELECT password FROM users WHERE username=?', (username,)
             ).fetchone()
-            if row and row['password'] == password:
+            if row and check_password_hash(row['password'], password):
                 session['user'] = username
                 conn.execute(
                     'INSERT INTO login_log (username, timestamp) VALUES (?, ?)',
@@ -266,7 +276,7 @@ def admin_create_user():
             return jsonify({'error': 'User already exists'}), 409
         conn.execute(
             'INSERT INTO users (username, password, groups) VALUES (?, ?, ?)',
-            (username, password, json.dumps(groups))
+            (username, generate_password_hash(password), json.dumps(groups))
         )
         conn.commit()
         return jsonify({'success': True})
@@ -311,7 +321,7 @@ def admin_reset_password(username):
         return jsonify({'error': 'Password required'}), 400
     conn = get_db()
     try:
-        conn.execute('UPDATE users SET password=? WHERE username=?', (password, username))
+        conn.execute('UPDATE users SET password=? WHERE username=?', (generate_password_hash(password), username))
         conn.commit()
         return jsonify({'success': True})
     finally:

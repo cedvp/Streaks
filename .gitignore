@@ -1,0 +1,19 @@
+# Database (managed on remote volume, not committed)
+streaks.db
+
+# Local DB backups created by pre-commit hook
+db_backups/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.env
+
+# IDE
+.idea/workspace.xml
+.idea/httpRequests/
+.idea/shelf/

@@ -117,13 +117,83 @@
   .toggle-btn { background: transparent; border: none; color: var(--text-muted); padding: 5px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s; }
   .toggle-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
   .help-text { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+  /* ── Mobile elements (hidden on desktop) ──────────────────────────── */
+  #mobile-topbar { display: none; }
+  #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 290; }
+  #sidebar-overlay.visible { display: block; }
+
+  /* ── Mobile layout ────────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    /* Top bar */
+    #mobile-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      position: fixed; top: 0; left: 0; right: 0; height: 52px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 0 6px; z-index: 280;
+    }
+    .mob-icon-btn {
+      background: none; border: none; color: var(--text); font-size: 20px;
+      padding: 0; cursor: pointer; border-radius: var(--radius);
+      width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    #mobile-panel-title { font-size: 15px; font-weight: 700; flex: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px; }
+
+    /* Sidebar as slide-in drawer */
+    .sidebar { transform: translateX(-100%); transition: transform 0.25s ease; z-index: 300; }
+    .sidebar.mobile-open { transform: translateX(0); box-shadow: 4px 0 32px rgba(0,0,0,0.6); }
+
+    /* Main */
+    .main { margin-left: 0; padding: 16px 12px 40px; padding-top: 68px; }
+
+    /* Full-screen bottom-sheet modals */
+    .modal-overlay { align-items: flex-end; }
+    .modal {
+      width: 100%; max-width: 100%; max-height: 95vh;
+      border-radius: 20px 20px 0 0;
+      border-left: none; border-right: none; border-bottom: none;
+      padding: 0 20px 20px;
+      padding-bottom: max(20px, env(safe-area-inset-bottom, 20px));
+    }
+    .modal::before {
+      content: ''; display: block;
+      width: 40px; height: 4px; background: #444d56; border-radius: 2px;
+      margin: 12px auto 10px;
+    }
+    .modal-title { font-size: 17px; padding-bottom: 12px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+    .modal-actions { padding-top: 12px; border-top: 1px solid var(--border); margin-top: 8px; flex-wrap: wrap; gap: 8px; }
+
+    /* Bigger touch targets — 16px prevents iOS auto-zoom */
+    .form-group input, .form-group select, .form-group textarea { font-size: 16px; padding: 11px 12px; }
+    .btn-save, .btn-cancel { padding: 12px 20px; font-size: 15px; }
+    .add-btn { padding: 10px 16px; }
+
+    /* Hide panel-level add button (replaced by topbar + button) */
+    .panel-header .add-btn { display: none; }
+    .panel-title { font-size: 18px; }
+    .panel-header { margin-bottom: 14px; }
+    .graph-card { padding: 14px 10px; }
+    .entries-card { padding: 14px 10px; }
+    .nav-item { padding: 10px 16px; }
+
+    /* Wider layout for small screens */
+    .form-row { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
 
+<div id="mobile-topbar">
+  <button class="mob-icon-btn" onclick="openSidebar()" aria-label="Menu">☰</button>
+  <span id="mobile-panel-title">🍺 Alcohol-Free</span>
+  <button class="mob-icon-btn" id="mobile-add-btn" onclick="openCurrentModal()" aria-label="Add entry">＋</button>
+</div>
+
 <div id="tooltip"><strong id="tip-date"></strong><div id="tip-body" class="tip-row"></div></div>
 
 <div class="layout">
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
   <aside class="sidebar">
     <div class="sidebar-title">
       <span class="logo-main"><span class="logo-white">1140</span><span class="logo-green">.tech</span></span>
@@ -477,6 +547,13 @@
 </div>
 
 <script>
+// ── Device detection ──────────────────────────────────────────────────────────
+(function() {
+  const ua = navigator.userAgent;
+  if (/Android/i.test(ua)) document.body.classList.add('is-android');
+  else if (/iPad|iPhone|iPod/i.test(ua)) document.body.classList.add('is-ios');
+})();
+
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
@@ -757,6 +834,20 @@ function toggleEntries(activity) {
   btn.textContent = hidden ? '▲ Hide' : '▼ Show';
 }
 
+// ── Mobile sidebar / drawer ───────────────────────────────────────────────────
+function openSidebar() {
+  document.querySelector('.sidebar').classList.add('mobile-open');
+  document.getElementById('sidebar-overlay').classList.add('visible');
+}
+function closeSidebar() {
+  document.querySelector('.sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-overlay').classList.remove('visible');
+}
+function openCurrentModal() {
+  if (currentActivity === 'sport' || currentActivity === 'food') return;
+  openModal(currentActivity);
+}
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 function switchPanel(activity) {
   currentActivity = activity;
@@ -767,6 +858,12 @@ function switchPanel(activity) {
   const nav = document.querySelector(`.nav-item[data-activity="${activity}"]`);
   if (nav) nav.classList.add('active');
   if (!graphData[activity]) { loadGraph(activity); loadEntries(activity); }
+  // Sync mobile topbar
+  const titleEl = document.getElementById('mobile-panel-title');
+  if (titleEl && nav) titleEl.textContent = nav.textContent.trim();
+  const addBtn = document.getElementById('mobile-add-btn');
+  if (addBtn) addBtn.style.visibility = (activity === 'sport' || activity === 'food') ? 'hidden' : 'visible';
+  closeSidebar();
 }
 
 // ── Standard entry modal ──────────────────────────────────────────────────────
