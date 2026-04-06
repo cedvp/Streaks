@@ -152,13 +152,24 @@
     .sidebar.mobile-open { transform: translateX(0); box-shadow: 4px 0 32px rgba(0,0,0,0.6); }
 
     /* ── Main content area ── */
-    .main { margin-left: 0; padding: 16px 12px 16px; padding-top: 70px; padding-bottom: 80px; }
+    .main { margin-left: 0; padding: 16px 12px 16px; padding-top: 70px; padding-bottom: 106px; }
 
-    /* ── Bottom tab bar ── */
-    #mobile-tab-bar {
+    /* ── Version banner (sits at very bottom, tab bar is above it) ── */
+    #version-banner {
       display: flex; position: fixed; bottom: 0; left: 0; right: 0;
+      height: 24px; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+      z-index: 275;
+    }
+    .is-android #version-banner { background: #3ddc84; color: #1a1a1a; }
+    .is-ios #version-banner { background: #0071e3; color: #ffffff; }
+    body:not(.is-android):not(.is-ios) #version-banner { background: #58a6ff; color: #0d1117; }
+
+    /* ── Bottom tab bar (sits above version banner) ── */
+    #mobile-tab-bar {
+      display: flex; position: fixed; bottom: 24px; left: 0; right: 0;
       height: 62px; background: var(--surface); border-top: 1px solid var(--border);
-      z-index: 280; padding-bottom: env(safe-area-inset-bottom, 0);
+      z-index: 280;
     }
     .mob-tab {
       flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -204,15 +215,20 @@
     .entries-card { display: none !important; }
     .panel-header .add-btn { display: none; }
 
-    /* ── Graph: contained scroll, no day-label column ── */
-    body { overflow-x: hidden; }
-    .graph-card { padding: 12px 10px; overflow: hidden; }
+    /* ── Graph: fully contained scroll ── */
+    html, body { overflow-x: hidden; max-width: 100%; }
+    .layout, .main, .panel { overflow-x: hidden; max-width: 100%; }
+    .graph-card { padding: 12px 10px; overflow: hidden; max-width: 100%; }
     .graph-label { display: none; }
-    /* display:block gives graph-wrap an implicit width:100%, making overflow-x:auto effective */
-    .graph-wrap { display: block; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 4px; }
-    .graph-wrap::-webkit-scrollbar { display: none; }
     .day-labels { display: none; }
     .months-row { display: none; }
+    /* Block + explicit width forces a real scroll container on Android */
+    .graph-wrap {
+      display: block !important; width: 100% !important; max-width: 100% !important;
+      overflow-x: scroll !important; -webkit-overflow-scrolling: touch;
+      scrollbar-width: none; padding-bottom: 4px;
+    }
+    .graph-wrap::-webkit-scrollbar { display: none; }
 
     /* ── Month navigation pills ── */
     .mob-month-nav {
@@ -605,6 +621,9 @@
   </div>
 </div>
 
+<!-- Version banner -->
+<div id="version-banner" class="version-label"></div>
+
 <!-- Mobile bottom tab bar -->
 <div id="mobile-tab-bar">
   <button class="mob-tab active" data-tab="graph" onclick="setMobTab('graph')">
@@ -831,6 +850,12 @@ function renderGraph(activity, data) {
   if (window.innerWidth <= 768) {
     const card = weeksEl.closest('.graph-card');
     const wrap = card.querySelector('.graph-wrap');
+    // Force inline styles — belt-and-suspenders for Android Chrome
+    wrap.style.display = 'block';
+    wrap.style.width = '100%';
+    wrap.style.maxWidth = '100%';
+    wrap.style.overflowX = 'scroll';
+    wrap.style.webkitOverflowScrolling = 'touch';
     let nav = card.querySelector('.mob-month-nav');
     if (!nav) {
       nav = document.createElement('div');
