@@ -205,9 +205,11 @@
     .panel-header .add-btn { display: none; }
 
     /* ── Graph: contained scroll, no day-label column ── */
+    body { overflow-x: hidden; }
     .graph-card { padding: 12px 10px; overflow: hidden; }
     .graph-label { display: none; }
-    .graph-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 4px; }
+    /* display:block gives graph-wrap an implicit width:100%, making overflow-x:auto effective */
+    .graph-wrap { display: block; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 4px; }
     .graph-wrap::-webkit-scrollbar { display: none; }
     .day-labels { display: none; }
     .months-row { display: none; }
