@@ -125,6 +125,7 @@
   #sidebar-overlay.visible { display: block; }
   #activities-picker { display: none; position: fixed; inset: 0; z-index: 350; background: var(--bg); overflow-y: auto; flex-direction: column; }
   #activities-picker.open { display: flex; }
+  .mob-month-nav { display: none; }
   .version-label { font-size: 10px; color: var(--text-muted); opacity: 0.65; }
   .sidebar-version { font-size: 11px; color: var(--text-muted); opacity: 0.65; padding: 0 0 8px; text-align: center; }
 
@@ -203,12 +204,32 @@
     .entries-card { display: none !important; }
     .panel-header .add-btn { display: none; }
 
+    /* ── Graph: contained scroll, no day-label column ── */
+    .graph-card { padding: 12px 10px; overflow: hidden; }
+    .graph-label { display: none; }
+    .graph-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 4px; }
+    .graph-wrap::-webkit-scrollbar { display: none; }
+    .day-labels { display: none; }
+    .months-row { display: none; }
+
+    /* ── Month navigation pills ── */
+    .mob-month-nav {
+      display: flex; overflow-x: auto; gap: 6px;
+      padding: 0 0 10px; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    }
+    .mob-month-nav::-webkit-scrollbar { display: none; }
+    .mob-month-pill {
+      flex-shrink: 0; background: transparent; border: 1px solid var(--border);
+      color: var(--text-muted); padding: 5px 13px; border-radius: 20px;
+      cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap; transition: all 0.15s;
+    }
+    .mob-month-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
     /* ── Bigger touch targets — 16 px prevents iOS auto-zoom ── */
     .form-group input, .form-group select, .form-group textarea { font-size: 16px; padding: 11px 12px; }
     .btn-save, .btn-cancel { padding: 12px 20px; font-size: 15px; }
     .panel-title { font-size: 18px; }
     .panel-header { margin-bottom: 14px; }
-    .graph-card { padding: 14px 10px; }
     .nav-item { padding: 10px 16px; }
     .form-row { grid-template-columns: 1fr; }
   }
@@ -804,6 +825,43 @@ function renderGraph(activity, data) {
     cell.addEventListener('mousemove', moveTooltip);
     cell.addEventListener('mouseleave', hideTooltip);
   });
+  // ── Mobile: inject month-pill nav and scroll to today ──────────────
+  if (window.innerWidth <= 768) {
+    const card = weeksEl.closest('.graph-card');
+    const wrap = card.querySelector('.graph-wrap');
+    let nav = card.querySelector('.mob-month-nav');
+    if (!nav) {
+      nav = document.createElement('div');
+      nav.className = 'mob-month-nav';
+      card.insertBefore(nav, wrap);
+    }
+    nav.innerHTML = monthPositions.map(({ wi, month }) =>
+      `<button class="mob-month-pill" onclick="scrollGraphToMonth(this,${wi})">${MONTHS[month]}</button>`
+    ).join('');
+    // Auto-scroll graph to the most recent week (right edge)
+    requestAnimationFrame(() => { wrap.scrollLeft = wrap.scrollWidth; });
+    // Mark the last (most recent) month pill as active
+    const pills = nav.querySelectorAll('.mob-month-pill');
+    if (pills.length) pills[pills.length - 1].classList.add('active');
+    // Update active pill as user scrolls the graph
+    wrap.onscroll = () => {
+      const cellW = 15, scrollX = wrap.scrollLeft;
+      let activeIdx = 0;
+      for (let i = 0; i < monthPositions.length; i++) {
+        if (monthPositions[i].wi * cellW <= scrollX + 10) activeIdx = i;
+      }
+      pills.forEach((p, i) => p.classList.toggle('active', i === activeIdx));
+    };
+  }
+}
+
+// ── Mobile graph month navigation ─────────────────────────────────────────────
+function scrollGraphToMonth(btn, weekIndex) {
+  const card = btn.closest('.graph-card');
+  const wrap = card.querySelector('.graph-wrap');
+  wrap.scrollTo({ left: weekIndex * 15, behavior: 'smooth' });
+  card.querySelectorAll('.mob-month-pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
 }
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
